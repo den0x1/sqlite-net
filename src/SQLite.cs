@@ -3030,7 +3030,7 @@ namespace SQLite
 							}
 					}
 				}
-
+			
 				while (SQLite3.Step (stmt) == SQLite3.Result.Row) {
 					var obj = Activator.CreateInstance (map.MappedType);
 					for (int i = 0; i < cols.Length; i++) {
@@ -3548,9 +3548,7 @@ namespace SQLite
 			}
 
 			if (isNullable) {
-				var setProperty = (Action<ObjectType, ColumnMemberType?>)Delegate.CreateDelegate (
-						typeof (Action<ObjectType, ColumnMemberType?>), null,
-						column.PropertyInfo.GetSetMethod ());
+				var setProperty = CreateSetter<ObjectType, ColumnMemberType?> (column.PropertyInfo);
 
 				return (o, stmt, i) => {
 					var colType = SQLite3.ColumnType (stmt, i);
@@ -3572,15 +3570,28 @@ namespace SQLite
 		/// <returns>A strongly-typed delegate</returns>
 		private static Action<object, Sqlite3Statement, int> CreateTypedSetterDelegate<ObjectType, ColumnMemberType> (TableMapping.Column column, Func<Sqlite3Statement, int, ColumnMemberType> getColumnValue)
 		{
-			var setProperty = (Action<ObjectType, ColumnMemberType>)Delegate.CreateDelegate (
-					typeof (Action<ObjectType, ColumnMemberType>), null,
-					column.PropertyInfo.GetSetMethod ());
+			var setProperty = CreateSetter<ObjectType, ColumnMemberType> (column.PropertyInfo);
 
 			return (o, stmt, i) => {
 				var colType = SQLite3.ColumnType (stmt, i);
 				if (colType != SQLite3.ColType.Null)
 					setProperty.Invoke ((ObjectType)o, getColumnValue.Invoke (stmt, i));
 			};
+		}
+
+		private static Action<ObjectType, ColumnMemberType> CreateSetter<ObjectType, ColumnMemberType> (PropertyInfo propertyInfo)
+		{
+			MethodInfo setMethod = propertyInfo.GetSetMethod ();
+			ParameterExpression parameterExpression1 = Expression.Parameter (typeof (ObjectType), "this");
+			ParameterExpression parameterExpression2 = Expression.Parameter (typeof (ColumnMemberType), "parameter");
+			var setProperty = Expression.Lambda<Action<ObjectType, ColumnMemberType>> (
+				Expression.Call (
+					parameterExpression1,
+					setMethod,
+					parameterExpression2),
+				parameterExpression1,
+				parameterExpression2).Compile ();
+			return setProperty;
 		}
 	}
 
